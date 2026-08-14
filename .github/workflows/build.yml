@@ -1,0 +1,46 @@
+name: 空室カレンダー更新
+
+on:
+  schedule:
+    # 毎時0分（UTC）。JSTでも毎時0分に相当する
+    - cron: "0 * * * *"
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 進行中のデプロイは中断せず、後続を1本だけ待たせる
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: カレンダーHTMLを生成
+        env:
+          HOTA_ICAL_URL: ${{ secrets.HOTA_ICAL_URL }}
+        run: python3 tools/build_calendar.py
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+
+      - id: deploy
+        uses: actions/deploy-pages@v4
