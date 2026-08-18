@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
+      url: ${{ steps.deploy.outputs.page_url || steps.deploy_retry.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
 
@@ -42,5 +42,27 @@ jobs:
         with:
           path: docs
 
+      # Pages側の一時障害（503）で毎時の失敗メールが飛ぶのを防ぐ。
+      # 1回目が失敗したら90秒待って再試行し、それでも駄目なら警告だけ出して終わる。
+      # カレンダーの中身は次回（1時間後）の実行で上書きされるため、実害は最大1時間の遅れ。
       - id: deploy
         uses: actions/deploy-pages@v4
+        continue-on-error: true
+
+      - name: 90秒待って再試行
+        if: steps.deploy.outcome == 'failure'
+        run: sleep 90
+
+      - id: deploy_retry
+        if: steps.deploy.outcome == 'failure'
+        uses: actions/deploy-pages@v4
+        continue-on-error: true
+
+      - name: デプロイ結果の確認
+        if: steps.deploy.outcome == 'failure'
+        run: |
+          if [ "${{ steps.deploy_retry.outcome }}" = "success" ]; then
+            echo "::notice::1回目のデプロイは失敗したが、再試行で成功した"
+          else
+            echo "::warning::Pagesデプロイが2回とも失敗した（Pages側の障害の可能性）。カレンダー生成自体は成功しているため、次回の実行で復旧を待つ"
+          fi
